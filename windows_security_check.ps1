@@ -1,90 +1,35 @@
-# Windows Security Configuration Check Script
-$ReportFile = "./windows_security_report.txt"
+# Windows安全加固脚本
+Write-Host "=== 加固前基线检查 ==="
 
-Write-Host "========================================"
-Write-Host "  Windows Security Check Script"
-Write-Host "========================================"
-Write-Host ""
+Write-Host "`n[防火墙状态]"
+netsh advfirewall show allprofiles state
 
-# 1. Firewall status
-Write-Host "=== 1. Firewall Status ==="
-$FirewallProfiles = Get-NetFirewallProfile -All
-foreach ($profile in $FirewallProfiles) {
-    Write-Host "Profile: $($profile.Name)"
-    Write-Host "  Enabled: $($profile.Enabled)"
-    Write-Host "  Default Inbound: $($profile.DefaultInboundAction)"
-    Write-Host "  Default Outbound: $($profile.DefaultOutboundAction)"
-    Write-Host ""
-}
+Write-Host "`n[RDP状态]"
+reg query "HKLM\System\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections
 
-$AllowRules = Get-NetFirewallRule -Direction Inbound -Action Allow -Enabled True
-Write-Host "Allowed inbound rules count: $($AllowRules.Count)"
-Write-Host ""
+Write-Host "`n[密码策略]"
+net accounts
 
-# 2. RDP config
-Write-Host "=== 2. Remote Desktop (RDP) ==="
-$RDP = (Get-ItemProperty "HKLM:\System\CurrentControlSet\Control\Terminal Server").fDenyTSConnections
-if ($RDP -eq 0) {
-    Write-Host "RDP: Enabled"
-} else {
-    Write-Host "RDP: Disabled"
-}
+Write-Host "`n=== 开始加固 ==="
 
-$NLA = (Get-ItemProperty "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp").UserAuthentication
-if ($NLA -eq 1) {
-    Write-Host "NLA: Enabled"
-} else {
-    Write-Host "NLA: Disabled"
-}
+Write-Host "`n[1] 启用防火墙"
+netsh advfirewall set allprofiles state on
 
-$RDPPort = (Get-ItemProperty "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp").PortNumber
-Write-Host "RDP Port: $RDPPort (default 3389)"
-Write-Host ""
+Write-Host "`n[2] 默认入站阻止，出站允许"
+netsh advfirewall set allprofiles firewallpolicy blockinbound,allowoutbound
 
-# 3. Password policy
-Write-Host "=== 3. Password Policy ==="
-$Accounts = net accounts
-$Accounts | ForEach-Object { Write-Host $_ }
-Write-Host ""
+Write-Host "`n[3] 启用RDP的NLA"
+reg add "HKLM\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v UserAuthentication /t REG_DWORD /d 1 /f
 
-# 4. Windows Update
-Write-Host "=== 4. Windows Update ==="
-$AU = Get-ItemProperty "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" -ErrorAction SilentlyContinue
-if ($AU) {
-    Write-Host "AUOptions: $($AU.AUOptions)"
-} else {
-    Write-Host "Using system default settings"
-}
-Write-Host ""
+Write-Host "`n[4] 密码策略：最小12位，90天过期"
+net accounts /minpwlen:12 /maxpwage:90
 
-# 5. Security log
-Write-Host "=== 5. Security Event Log ==="
-$SecurityLog = Get-WinEvent -ListLog Security
-Write-Host "Max size: $([math]::Round($SecurityLog.MaximumSizeInBytes/1MB, 2)) MB"
-Write-Host "Record count: $($SecurityLog.RecordCount)"
-Write-Host ""
+Write-Host "`n=== 加固后验证 ==="
 
-$Yesterday = (Get-Date).AddDays(-1)
-try {
-    $FailedLogins = Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4625; StartTime=$Yesterday} -ErrorAction Stop
-    Write-Host "Failed logins (24h, Event 4625): $($FailedLogins.Count)"
-} catch {
-    Write-Host "Failed logins (24h, Event 4625): 0"
-}
-Write-Host ""
+Write-Host "`n[加固后防火墙]"
+netsh advfirewall show allprofiles state
 
-# Comparison table
-Write-Host "========================================"
-Write-Host "  Windows vs Linux Security Comparison"
-Write-Host "========================================"
-Write-Host ""
-Write-Host "| Item        | Windows                   | Linux                     |"
-Write-Host "|-------------|---------------------------|---------------------------|"
-Write-Host "| Firewall    | Windows Defender Firewall | UFW                       |"
-Write-Host "| Remote      | RDP (3389)                | SSH (22)                  |"
-Write-Host "| Password    | secpol.msc                | /etc/login.defs           |"
-Write-Host "| Auto Update | Windows Update            | unattended-upgrades       |"
-Write-Host "| Logging     | Event Viewer              | syslog/auth.log           |"
-Write-Host ""
+Write-Host "`n[加固后密码策略]"
+net accounts
 
-Write-Host "Done!"
+Write-Host "`n完成"
