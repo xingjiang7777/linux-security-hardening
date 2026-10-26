@@ -300,11 +300,16 @@ generate_report() {
 # ============================================================
 rollback() {
     print_warn "=== 开始回滚配置 ==="
-    
-    if [ ! -d "$BACKUP_DIR" ]; then
+
+    # 回滚是脚本的另一次运行，顶部的 BACKUP_DIR 已按当前时间重新生成，
+    # 这里定位最近一次加固生成的备份目录，否则会找不到原始备份。
+    BACKUP_DIR=$(ls -dt /tmp/security_backup_* 2>/dev/null | head -n1)
+
+    if [ -z "$BACKUP_DIR" ] || [ ! -d "$BACKUP_DIR" ]; then
         print_error "未找到备份目录，无法回滚"
         exit 1
     fi
+    print_info "使用备份目录：$BACKUP_DIR"
     
     # 恢复sshd_config
     if [ -f "$BACKUP_DIR/sshd_config.bak" ]; then
