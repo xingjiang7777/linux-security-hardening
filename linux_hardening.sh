@@ -160,6 +160,13 @@ harden_ssh() {
     print_info "已设置最大认证尝试次数：3次"
     
     # 重启SSH服务（Ubuntu 20.04服务名是ssh不是sshd）
+    # 重启前语法校验：sshd位于/usr/sbin时通常不在默认PATH，先定位再校验；不通过则中止重启并回滚，防止SSH失联
+    SSHD_BIN="$(command -v sshd 2>/dev/null || echo /usr/sbin/sshd)"
+    if ! "$SSHD_BIN" -t 2>/dev/null; then
+        print_error "SSH配置语法校验失败，已中止重启并触发回滚"
+        rollback
+        exit 1
+    fi
     systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
     print_info "SSH服务已重启，配置生效"
     
