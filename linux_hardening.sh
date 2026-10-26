@@ -115,6 +115,18 @@ harden_ssh() {
     
     SSHD_CONFIG="/etc/ssh/sshd_config"
     
+    # 检查SSH服务是否安装
+    if [ ! -f "$SSHD_CONFIG" ]; then
+        print_warn "未找到sshd_config，正在安装openssh-server..."
+        apt-get update -qq && apt-get install -y openssh-server -qq
+    fi
+    
+    # 如果还是没有配置文件，跳过SSH加固
+    if [ ! -f "$SSHD_CONFIG" ]; then
+        print_error "SSH服务安装失败，跳过SSH加固步骤"
+        return
+    fi
+    
     # 禁用root远程登录
     if grep -q "^PermitRootLogin" "$SSHD_CONFIG"; then
         sed -i 's/^PermitRootLogin.*/PermitRootLogin no/' "$SSHD_CONFIG"
@@ -147,8 +159,8 @@ harden_ssh() {
     fi
     print_info "已设置最大认证尝试次数：3次"
     
-    # 重启SSH服务
-    systemctl restart sshd
+    # 重启SSH服务（Ubuntu 20.04服务名是ssh不是sshd）
+    systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
     print_info "SSH服务已重启，配置生效"
     
     # 验证配置
@@ -297,7 +309,7 @@ rollback() {
     # 恢复sshd_config
     if [ -f "$BACKUP_DIR/sshd_config.bak" ]; then
         cp "$BACKUP_DIR/sshd_config.bak" /etc/ssh/sshd_config
-        systemctl restart sshd
+        systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null
         print_info "已恢复SSH配置"
     fi
     
